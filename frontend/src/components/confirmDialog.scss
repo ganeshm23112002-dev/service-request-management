@@ -1,0 +1,83 @@
+@use "../styles/variables" as v;
+@use "../styles/mixins" as m;
+
+.confirm-dialog__backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: v.$space-4;
+  background: rgba(21, 30, 52, 0.46);
+}
+
+.confirm-dialog {
+  width: min(100%, 440px);
+  padding: v.$space-8;
+  border: 1px solid v.$color-border;
+  border-radius: v.$radius-lg;
+  background: v.$color-surface;
+  box-shadow: v.$shadow-popover;
+  text-align: center;
+
+  h2 {
+    margin: v.$space-4 0 v.$space-2;
+    font-size: v.$font-xl;
+  }
+
+  p {
+    color: v.$color-text-muted;
+    font-size: v.$font-sm;
+  }
+}
+
+.confirm-dialog__icon {
+  display: grid;
+  width: 2.8rem;
+  height: 2.8rem;
+  margin: 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: v.$color-danger-soft;
+  color: v.$color-danger;
+  font-size: v.$font-xl;
+  font-weight: 800;
+}
+
+.confirm-dialog__actions {
+  @include m.flex(center, flex-end, v.$space-3);
+  margin-top: v.$space-8;
+
+  button {
+    @include m.button(v.$color-brand, #fff);
+    min-height: 2.65rem;
+    padding: 0 v.$space-4;
+  }
+}
+
+.confirm-dialog__cancel {
+  border-color: v.$color-border !important;
+  background: #fff !important;
+  color: v.$color-text !important;
+
+  &:hover:not(:disabled) { background: #f7f8fb !important; }
+}
+
+.confirm-dialog__confirm {
+  @include m.button(v.$color-danger, #fff);
+  @include m.flex(center, center, v.$space-2);
+
+  &:hover:not(:disabled) {
+    border-color: #8f1c13 !important;
+    background: #8f1c13 !important;
+  }
+}
+
+.confirm-dialog__spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgba(#fff, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}

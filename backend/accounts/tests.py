@@ -14,6 +14,15 @@ class AuthenticationAPITests(APITestCase):
     current_user_url = "/api/auth/me/"
     logout_url = "/api/auth/logout/"
 
+    def assert_envelope(self, response, success):
+        self.assertEqual(
+            set(response.data),
+            {"status", "statusCode", "data"},
+        )
+        self.assertEqual(response.data["status"], success)
+        self.assertEqual(response.data["statusCode"], response.status_code)
+        return response.data["data"]
+
     def setUp(self):
         self.password = "StrongPass!482"
         self.user = User.objects.create_user(
@@ -39,10 +48,11 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = self.assert_envelope(response, True)
         registered_user = User.objects.get(username="new.employee")
         self.assertEqual(registered_user.role, User.Role.EMPLOYEE)
         self.assertTrue(registered_user.check_password("AnotherStrong!825"))
-        self.assertNotIn("password", response.data)
+        self.assertNotIn("password", data)
 
     def test_rejects_admin_role_assignment(self):
         response = self.client.post(
@@ -52,6 +62,7 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assert_envelope(response, False)
         self.assertFalse(User.objects.filter(username="new.employee").exists())
 
     def test_rejects_duplicate_username(self):
@@ -62,7 +73,7 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("username", response.data)
+        self.assertIn("username", self.assert_envelope(response, False))
 
     def test_rejects_invalid_email(self):
         response = self.client.post(
@@ -72,6 +83,7 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assert_envelope(response, False)
 
     def test_rejects_weak_password(self):
         response = self.client.post(
@@ -81,7 +93,7 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("password", response.data)
+        self.assertIn("password", self.assert_envelope(response, False))
 
     def test_login_returns_access_and_refresh_tokens(self):
         response = self.client.post(
@@ -91,8 +103,9 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("access", response.data)
-        self.assertIn("refresh", response.data)
+        data = self.assert_envelope(response, True)
+        self.assertIn("access", data)
+        self.assertIn("refresh", data)
 
     def test_login_rejects_invalid_credentials(self):
         response = self.client.post(
@@ -102,11 +115,13 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assert_envelope(response, False)
 
     def test_current_user_requires_authentication(self):
         response = self.client.get(self.current_user_url)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assert_envelope(response, False)
 
     def test_current_user_returns_authenticated_user(self):
         access_token = str(RefreshToken.for_user(self.user).access_token)
@@ -115,7 +130,7 @@ class AuthenticationAPITests(APITestCase):
         response = self.client.get(self.current_user_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, {
+        self.assertEqual(self.assert_envelope(response, True), {
             "id": self.user.id,
             "username": self.user.username,
             "email": self.user.email,
@@ -132,7 +147,7 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("access", response.data)
+        self.assertIn("access", self.assert_envelope(response, True))
 
     def test_logout_blacklists_refresh_token(self):
         refresh_token = str(RefreshToken.for_user(self.user))
@@ -149,6 +164,7 @@ class AuthenticationAPITests(APITestCase):
             logout_response.status_code,
             status.HTTP_200_OK,
         )
+        self.assert_envelope(logout_response, True)
         refresh_response = self.client.post(
             self.refresh_url,
             {"refresh": refresh_token},
@@ -158,6 +174,7 @@ class AuthenticationAPITests(APITestCase):
             refresh_response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+        self.assert_envelope(refresh_response, False)
 
     def test_logout_rejects_invalid_refresh_token(self):
         access_token = str(RefreshToken.for_user(self.user).access_token)
@@ -170,3 +187,4 @@ class AuthenticationAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assert_envelope(response, False)

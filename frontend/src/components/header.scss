@@ -1,0 +1,36 @@
+@use "../styles/variables" as v;
+@use "../styles/mixins" as m;
+
+.topbar {
+  @include m.flex(center, space-between, v.$space-4);
+  min-height: 0;
+}
+
+.topbar__menu {
+  display: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 0.65rem;
+  border: 1px solid v.$color-border;
+  border-radius: v.$radius-sm;
+  background: #fff;
+  cursor: pointer;
+
+  span {
+    height: 2px;
+    border-radius: 2px;
+    background: v.$color-text;
+  }
+}
+
+@include m.respond(v.$breakpoint-md) {
+  .topbar {
+    min-height: 3.5rem;
+    padding-bottom: v.$space-2;
+  }
+
+  .topbar__menu { display: flex; }
+}

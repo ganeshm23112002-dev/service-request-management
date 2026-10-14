@@ -1,0 +1,22 @@
+@use "../styles/variables" as v;
+
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  font-size: v.$font-sm;
+  font-weight: 650;
+  white-space: nowrap;
+
+  &__marker {
+    width: 0.48rem;
+    height: 0.48rem;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  &--low { color: v.$priority-low; }
+  &--medium { color: v.$priority-medium; }
+  &--high { color: v.$priority-high; }
+  &--unknown { color: v.$color-text-muted; }
+}

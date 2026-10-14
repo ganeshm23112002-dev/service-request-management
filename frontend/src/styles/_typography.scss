@@ -1,0 +1,50 @@
+@use "variables" as v;
+
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: v.$font-base;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: v.$color-text;
+  font-weight: 720;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+h1 {
+  font-size: v.$font-3xl;
+}
+
+h2 {
+  font-size: v.$font-2xl;
+}
+
+h3 {
+  font-size: v.$font-xl;
+}
+
+a {
+  color: v.$color-brand;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+label {
+  color: v.$color-text;
+  font-size: v.$font-sm;
+  font-weight: 650;
+}
+
+.helper-text {
+  color: v.$color-text-muted;
+  font-size: v.$font-sm;
+}

@@ -12,6 +12,15 @@ User = get_user_model()
 class ServiceRequestAPITests(APITestCase):
     list_url = "/api/requests/"
 
+    def assert_envelope(self, response, success):
+        self.assertEqual(
+            set(response.data),
+            {"status", "statusCode", "data"},
+        )
+        self.assertEqual(response.data["status"], success)
+        self.assertEqual(response.data["statusCode"], response.status_code)
+        return response.data["data"]
+
     def setUp(self):
         self.employee = User.objects.create_user(
             username="employee",
@@ -67,12 +76,13 @@ class ServiceRequestAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        created_request = ServiceRequest.objects.get(id=response.data["id"])
+        data = self.assert_envelope(response, True)
+        created_request = ServiceRequest.objects.get(id=data["id"])
         self.assertEqual(created_request.created_by, self.employee)
         self.assertFalse(created_request.is_overdue)
         self.assertEqual(created_request.status, ServiceRequest.Status.OPEN)
-        self.assertEqual(response.data["created_by"], self.employee.id)
-        self.assertNotIn("email", response.data)
+        self.assertEqual(data["created_by"], self.employee.id)
+        self.assertNotIn("email", data)
 
     def test_employee_lists_only_own_requests(self):
         own_request = self.make_request()
@@ -82,8 +92,9 @@ class ServiceRequestAPITests(APITestCase):
         response = self.client.get(self.list_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = self.assert_envelope(response, True)
         self.assertEqual(
-            [item["id"] for item in response.data],
+            [item["id"] for item in data],
             [own_request.id],
         )
 
@@ -95,7 +106,7 @@ class ServiceRequestAPITests(APITestCase):
         response = self.client.get(self.list_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(self.assert_envelope(response, True)), 2)
 
     def test_employee_cannot_view_another_employees_request(self):
         other_request = self.make_request(created_by=self.other_employee)
@@ -104,6 +115,7 @@ class ServiceRequestAPITests(APITestCase):
         response = self.client.get(f"{self.list_url}{other_request.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assert_envelope(response, False)
 
     def test_employee_cannot_change_request_status(self):
         service_request = self.make_request()
@@ -116,6 +128,7 @@ class ServiceRequestAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assert_envelope(response, False)
         service_request.refresh_from_db()
         self.assertEqual(service_request.status, ServiceRequest.Status.OPEN)
 
@@ -130,6 +143,7 @@ class ServiceRequestAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assert_envelope(response, True)
         service_request.refresh_from_db()
         self.assertEqual(service_request.status, ServiceRequest.Status.RESOLVED)
 
@@ -152,7 +166,47 @@ class ServiceRequestAPITests(APITestCase):
                     response.status_code,
                     status.HTTP_400_BAD_REQUEST,
                 )
-                self.assertIn(next(iter(invalid_values)), response.data)
+                errors = self.assert_envelope(response, False)
+                self.assertIn(next(iter(invalid_values)), errors)
+
+    def test_title_and_description_length_limits_are_enforced(self):
+        self.authenticate_as(self.employee)
+        invalid_payloads = (
+            ({"title": "ab"}, "title"),
+            ({"title": "t" * 51}, "title"),
+            ({"description": "d" * 14}, "description"),
+            ({"description": "d" * 251}, "description"),
+        )
+
+        for overrides, field_name in invalid_payloads:
+            with self.subTest(field=field_name, length=len(overrides[field_name])):
+                response = self.client.post(
+                    self.list_url,
+                    self.request_payload(**overrides),
+                    format="json",
+                )
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                )
+                errors = self.assert_envelope(response, False)
+                self.assertIn(field_name, errors)
+
+    def test_title_and_description_length_boundaries_are_accepted(self):
+        self.authenticate_as(self.employee)
+        for title, description in (
+            ("t" * 3, "d" * 15),
+            ("t" * 50, "d" * 250),
+        ):
+            with self.subTest(title_length=len(title), description_length=len(description)):
+                response = self.client.post(
+                    self.list_url,
+                    self.request_payload(title=title, description=description),
+                    format="json",
+                )
+
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                self.assert_envelope(response, True)
 
     def test_filters_by_status_and_priority(self):
         matching_request = self.make_request(
@@ -176,8 +230,9 @@ class ServiceRequestAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = self.assert_envelope(response, True)
         self.assertEqual(
-            [item["id"] for item in response.data],
+            [item["id"] for item in data],
             [matching_request.id],
         )
 
@@ -194,7 +249,8 @@ class ServiceRequestAPITests(APITestCase):
                     response.status_code,
                     status.HTTP_400_BAD_REQUEST,
                 )
-                self.assertIn(field_name, response.data)
+                errors = self.assert_envelope(response, False)
+                self.assertIn(field_name, errors)
 
     def test_employee_can_update_and_delete_own_request(self):
         service_request = self.make_request()
@@ -206,13 +262,15 @@ class ServiceRequestAPITests(APITestCase):
             format="json",
         )
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        self.assert_envelope(update_response, True)
         service_request.refresh_from_db()
         self.assertEqual(service_request.title, "Updated title")
 
         delete_response = self.client.delete(
             f"{self.list_url}{service_request.id}/"
         )
-        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(self.assert_envelope(delete_response, True))
         self.assertFalse(
             ServiceRequest.objects.filter(id=service_request.id).exists()
         )
@@ -229,7 +287,9 @@ class ServiceRequestAPITests(APITestCase):
             list_response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+        self.assert_envelope(list_response, False)
         self.assertEqual(
             create_response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+        self.assert_envelope(create_response, False)

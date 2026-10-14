@@ -1,5 +1,12 @@
 from django.conf import settings
 from django.db import models
+from django.core.validators import MaxLengthValidator, MinLengthValidator
+
+
+TITLE_MIN_LENGTH = 3
+TITLE_MAX_LENGTH = 50
+DESCRIPTION_MIN_LENGTH = 15
+DESCRIPTION_MAX_LENGTH = 250
 
 
 class ServiceRequest(models.Model):
@@ -18,8 +25,18 @@ class ServiceRequest(models.Model):
         IN_PROGRESS = "IN_PROGRESS", "In progress"
         RESOLVED = "RESOLVED", "Resolved"
 
-    title = models.TextField()
-    description = models.TextField()
+    title = models.TextField(
+        validators=[
+            MinLengthValidator(TITLE_MIN_LENGTH),
+            MaxLengthValidator(TITLE_MAX_LENGTH),
+        ],
+    )
+    description = models.TextField(
+        validators=[
+            MinLengthValidator(DESCRIPTION_MIN_LENGTH),
+            MaxLengthValidator(DESCRIPTION_MAX_LENGTH),
+        ],
+    )
     category = models.CharField(max_length=20, choices=Category.choices)
     priority = models.CharField(
         max_length=10,

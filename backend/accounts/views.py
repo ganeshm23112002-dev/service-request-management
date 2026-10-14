@@ -6,23 +6,25 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
+from config.api import APIResponseMixin
+
 from .serializers import CurrentUserSerializer, EmployeeRegistrationSerializer
 
 
-class EmployeeRegistrationView(generics.CreateAPIView):
+class EmployeeRegistrationView(APIResponseMixin, generics.CreateAPIView):
     serializer_class = EmployeeRegistrationSerializer
     permission_classes = (permissions.AllowAny,)
 
 
-class EmployeeLoginView(TokenObtainPairView):
+class EmployeeLoginView(APIResponseMixin, TokenObtainPairView):
     permission_classes = (permissions.AllowAny,)
 
 
-class RefreshTokenView(TokenRefreshView):
+class RefreshTokenView(APIResponseMixin, TokenRefreshView):
     permission_classes = (permissions.AllowAny,)
 
 
-class CurrentUserView(generics.RetrieveAPIView):
+class CurrentUserView(APIResponseMixin, generics.RetrieveAPIView):
     serializer_class = CurrentUserSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -30,6 +32,6 @@ class CurrentUserView(generics.RetrieveAPIView):
         return self.request.user
 
 
-class EmployeeLogoutView(TokenBlacklistView):
+class EmployeeLogoutView(APIResponseMixin, TokenBlacklistView):
     permission_classes = (permissions.IsAuthenticated,)
     authentication_classes = (JWTAuthentication,)
