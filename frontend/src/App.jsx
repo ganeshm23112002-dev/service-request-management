@@ -7,6 +7,7 @@ import Login from "./pages/Login.jsx";
 import Signup from "./pages/Signup.jsx";
 import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
+import EmployeeManagement from "./pages/EmployeeManagement.jsx";
 import RequestForm from "./pages/RequestForm.jsx";
 import RequestDetails from "./pages/RequestDetails.jsx";
 
@@ -85,6 +86,7 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute allowedRole="ADMIN" />}>
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/employees" element={<EmployeeManagement />} />
             <Route path="/admin/requests/new" element={<RequestFormRoute />} />
             <Route path="/admin/requests/:id" element={<RequestDetails />} />
             <Route path="/admin/requests/:id/edit" element={<RequestFormRoute />} />

@@ -1,5 +1,92 @@
 @use "../styles/variables" as v;
+@use "../styles/mixins" as m;
 
 .admin-dashboard {
   --dashboard-accent: #{v.$color-warning};
+}
+
+.admin-dashboard__overview {
+  margin-bottom: v.$space-6;
+}
+
+.admin-dashboard__last-check {
+  margin-top: v.$space-2;
+  color: v.$color-text-muted;
+  font-size: v.$font-xs;
+}
+
+.admin-dashboard__overview-heading {
+  @include m.flex(center, space-between, v.$space-4);
+  margin-bottom: v.$space-4;
+
+  h2 { margin-bottom: v.$space-1; }
+  p { color: v.$color-text-muted; font-size: v.$font-sm; }
+
+  button {
+    min-height: 2.4rem;
+    padding: 0 v.$space-3;
+    border: 1px solid v.$color-border;
+    border-radius: v.$radius-sm;
+    background: #fff;
+    color: v.$color-text;
+    cursor: pointer;
+
+    &:disabled { cursor: wait; opacity: 0.65; }
+  }
+}
+
+.admin-dashboard__summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: v.$space-3;
+}
+
+.admin-dashboard__summary-card {
+  display: grid;
+  min-height: 106px;
+  align-content: space-between;
+  gap: v.$space-3;
+  padding: v.$space-4;
+  border: 1px solid v.$color-border;
+  border-left: 3px solid v.$color-brand;
+  border-radius: v.$radius-md;
+  background: v.$color-surface;
+  box-shadow: v.$shadow-card;
+
+  span { color: v.$color-text-muted; font-size: v.$font-xs; font-weight: 650; }
+  strong { color: v.$color-text; font-size: v.$font-2xl; line-height: 1; }
+
+  &--open { border-left-color: v.$color-info; }
+  &--progress { border-left-color: v.$color-warning; }
+  &--resolved { border-left-color: v.$color-success; }
+  &--high,
+  &--overdue { border-left-color: v.$color-danger; }
+}
+
+.admin-dashboard__summary-error {
+  @include m.flex(center, space-between, v.$space-3);
+  padding: v.$space-4;
+  border: 1px solid #f3c8c4;
+  border-radius: v.$radius-sm;
+  background: v.$color-danger-soft;
+  color: v.$color-danger;
+  font-size: v.$font-sm;
+
+  button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-weight: 700;
+  }
+}
+
+@include m.respond(v.$breakpoint-xl) {
+  .admin-dashboard__summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@include m.respond(v.$breakpoint-sm) {
+  .admin-dashboard__summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-dashboard__summary-card { min-height: 92px; padding: v.$space-3; }
+  .admin-dashboard__overview-heading { align-items: flex-start; }
 }

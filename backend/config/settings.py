@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from celery.schedules import schedule
+from django.core.exceptions import ImproperlyConfigured
 
 load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -22,13 +24,58 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("SECRET_KEY", "")
+def environment_bool(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized_value = value.strip().lower()
+    if normalized_value in {"true", "1", "yes", "on"}:
+        return True
+    if normalized_value in {"false", "0", "no", "off"}:
+        return False
+    raise ImproperlyConfigured(
+        f"{name} must be set to true or false."
+    )
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 
-ALLOWED_HOSTS = []
+DEBUG = environment_bool("DJANGO_DEBUG", False)
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    raise ImproperlyConfigured("SECRET_KEY must be configured.")
+
+configured_hosts = os.getenv("ALLOWED_HOSTS", "").strip()
+if configured_hosts:
+    ALLOWED_HOSTS = [
+        host.strip()
+        for host in configured_hosts.split(",")
+        if host.strip()
+    ]
+else:
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+
+SECURE_SSL_REDIRECT = environment_bool(
+    "SECURE_SSL_REDIRECT",
+    not DEBUG,
+)
+SESSION_COOKIE_SECURE = environment_bool(
+    "SESSION_COOKIE_SECURE",
+    not DEBUG,
+)
+CSRF_COOKIE_SECURE = environment_bool(
+    "CSRF_COOKIE_SECURE",
+    not DEBUG,
+)
+SECURE_HSTS_SECONDS = int(
+    os.getenv(
+        "SECURE_HSTS_SECONDS",
+        "31536000" if not DEBUG else "0",
+    )
+)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = environment_bool(
+    "SECURE_HSTS_INCLUDE_SUBDOMAINS",
+    not DEBUG,
+)
+SECURE_HSTS_PRELOAD = environment_bool("SECURE_HSTS_PRELOAD", False)
 
 
 # Application definition
@@ -44,7 +91,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "accounts",
-    "service_requests",
+    "service_requests.apps.ServiceRequestsConfig",
     "dashboard",
 ]
 
@@ -134,17 +181,43 @@ STATIC_URL = 'static/'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
+DEFAULT_FROM_EMAIL = os.getenv(
+    "DEFAULT_FROM_EMAIL",
+    "webmaster@localhost",
+)
+smtp_options = {}
+if not DEBUG:
+    smtp_options = {
+        "host": os.getenv("SMTP_HOST", "localhost"),
+        "port": int(os.getenv("SMTP_PORT", "25")),
+        "username": os.getenv("SMTP_USERNAME", ""),
+        "password": os.getenv("SMTP_PASSWORD", ""),
+        "use_tls": environment_bool("SMTP_USE_TLS", False),
+        "use_ssl": environment_bool("SMTP_USE_SSL", False),
+    }
 MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+    "default": {
+        "BACKEND": (
+            "django.core.mail.backends.console.EmailBackend"
+            if DEBUG
+            else "django.core.mail.backends.smtp.EmailBackend"
+        ),
+        "OPTIONS": smtp_options,
     },
 }
 
 AUTH_USER_MODEL = "accounts.User"
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-]
+configured_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+CORS_ALLOWED_ORIGINS = (
+    [
+        origin.strip()
+        for origin in configured_cors_origins.split(",")
+        if origin.strip()
+    ]
+    if configured_cors_origins
+    else ["http://localhost:5173", "http://127.0.0.1:5173"]
+)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -154,4 +227,41 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "EXCEPTION_HANDLER": "config.api.api_exception_handler",
+}
+
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+DASHBOARD_SUMMARY_CACHE_TIMEOUT = int(
+    os.getenv("DASHBOARD_SUMMARY_CACHE_TIMEOUT", "60")
+)
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": os.getenv(
+                "CACHE_KEY_PREFIX",
+                "service-request-management",
+            ),
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "service-request-management-development",
+        }
+    }
+
+CELERY_BROKER_URL = os.getenv(
+    "CELERY_BROKER_URL",
+    REDIS_URL or "redis://127.0.0.1:6379/0",
+)
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_BEAT_SCHEDULE = {
+    "check-overdue-requests-every-five-minutes": {
+        "task": "service_requests.tasks.check_overdue_requests",
+        "schedule": schedule(run_every=300.0),
+    },
 }

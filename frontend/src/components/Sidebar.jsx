@@ -10,6 +10,9 @@ export default function Sidebar({ isOpen, onClose }) {
   const navigation = [
     { to: dashboardPath, label: user?.role === "ADMIN" ? "All requests" : "My requests", icon: "▤" },
     { to: `${dashboardPath}/requests/new`, label: "Create request", icon: "+" },
+    ...(user?.role === "ADMIN"
+      ? [{ to: "/admin/employees", label: "Employees", icon: "♙" }]
+      : []),
   ];
 
   const handleLogout = async () => {

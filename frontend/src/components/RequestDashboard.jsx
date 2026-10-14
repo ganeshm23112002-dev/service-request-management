@@ -11,6 +11,11 @@ const statusOptions = [
   ["IN_PROGRESS", "In Progress"],
   ["RESOLVED", "Resolved"],
 ];
+const categoryOptions = [
+  ["IT", "IT"],
+  ["MAINTENANCE", "Maintenance"],
+  ["GENERAL", "General"],
+];
 const priorityOptions = [
   ["LOW", "Low"],
   ["MEDIUM", "Medium"],
@@ -25,15 +30,21 @@ function formatDate(value) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
-export default function RequestDashboard({ isAdmin = false }) {
+export default function RequestDashboard({ isAdmin = false, onDataChanged = () => {} }) {
   const location = useLocation();
   const navigate = useNavigate();
   const dashboardPath = isAdmin ? "/admin" : "/employee";
   const [requests, setRequests] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [overdueFilter, setOverdueFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [ordering, setOrdering] = useState("-created_at");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(location.state?.notice || "");
@@ -41,36 +52,56 @@ export default function RequestDashboard({ isAdmin = false }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(null);
-  const pageCount = Math.max(1, Math.ceil(requests.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
   const displayedPage = Math.min(currentPage, pageCount);
-  const firstItem = requests.length === 0 ? 0 : (displayedPage - 1) * pageSize + 1;
-  const lastItem = Math.min(displayedPage * pageSize, requests.length);
-  const visibleRequests = requests.slice(firstItem - 1, lastItem);
+  const firstItem = totalCount === 0 ? 0 : (displayedPage - 1) * pageSize + 1;
+  const lastItem = Math.min((displayedPage - 1) * pageSize + requests.length, totalCount);
+  const visibleRequests = requests;
   const pageNumbers = pageCount <= 7
     ? Array.from({ length: pageCount }, (_, index) => index + 1)
     : [...new Set([1, displayedPage - 1, displayedPage, displayedPage + 1, pageCount]
       .filter((page) => page >= 1 && page <= pageCount)
       .sort((left, right) => left - right))];
 
-  const loadRequests = useCallback(async () => {
+  const loadRequests = useCallback(async (signal) => {
     setLoading(true);
     setError("");
     try {
       const params = {};
       if (statusFilter) params.status = statusFilter;
       if (priorityFilter) params.priority = priorityFilter;
-      const { data } = await api.get("/requests/", { params });
-      setRequests(data);
-      setCurrentPage(1);
+      if (categoryFilter) params.category = categoryFilter;
+      if (overdueFilter) params.overdue = overdueFilter;
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (ordering) params.ordering = ordering;
+      params.page = currentPage;
+      params.page_size = pageSize;
+      const { data } = await api.get("/requests/", { params, signal });
+      if (Array.isArray(data)) {
+        setRequests(data);
+        setTotalCount(data.length);
+      } else {
+        setRequests(data.results || []);
+        setTotalCount(data.count || 0);
+      }
     } catch (loadError) {
-      setError(getErrorMessage(loadError));
+      if (!signal?.aborted) setError(getErrorMessage(loadError));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  }, [statusFilter, priorityFilter]);
+  }, [statusFilter, priorityFilter, categoryFilter, overdueFilter, debouncedSearch, ordering, currentPage, pageSize]);
 
   useEffect(() => {
-    loadRequests();
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadRequests(controller.signal);
+    return () => controller.abort();
   }, [loadRequests]);
 
   useEffect(() => {
@@ -88,15 +119,24 @@ export default function RequestDashboard({ isAdmin = false }) {
   }, [notice]);
 
   const requestPath = (id) => `${dashboardPath}/requests/${id}`;
+  const resetToFirstPage = (setter) => (event) => {
+    setter(event.target.value);
+    setCurrentPage(1);
+  };
 
   const deleteRequest = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
       await api.delete(`/requests/${deleteTarget.id}/`);
-      setRequests((current) => current.filter((item) => item.id !== deleteTarget.id));
+      if (requests.length === 1 && currentPage > 1) {
+        setCurrentPage((page) => page - 1);
+      } else {
+        loadRequests();
+      }
       setNoticeType("success");
       setNotice("Request deleted successfully.");
+      onDataChanged();
     } catch (deleteError) {
       setNoticeType("error");
       setNotice(getErrorMessage(deleteError));
@@ -114,6 +154,7 @@ export default function RequestDashboard({ isAdmin = false }) {
       setRequests((current) => current.map((item) => item.id === data.id ? data : item));
       setNoticeType("success");
       setNotice("Request status updated.");
+      onDataChanged();
     } catch (statusError) {
       setNoticeType("error");
       setNotice(getErrorMessage(statusError));
@@ -155,30 +196,77 @@ export default function RequestDashboard({ isAdmin = false }) {
             <h3>{isAdmin ? "All requests" : "My requests"}</h3>
             {!loading && !error && (
               <span className="request-panel__count">
-                {requests.length} {requests.length === 1 ? "request" : "requests"}
+                {totalCount} {totalCount === 1 ? "request" : "requests"}
               </span>
             )}
           </div>
           <div className="request-panel__filters">
             <label>
               <span className="sr-only">Filter by status</span>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <select value={statusFilter} onChange={resetToFirstPage(setStatusFilter)}>
                 <option value="">All statuses</option>
                 {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
             <label>
               <span className="sr-only">Filter by priority</span>
-              <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+              <select value={priorityFilter} onChange={resetToFirstPage(setPriorityFilter)}>
                 <option value="">All priorities</option>
                 {priorityOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
-            {(statusFilter || priorityFilter) && (
+            {isAdmin && (
+              <>
+                <label>
+                  <span className="sr-only">Filter by category</span>
+                  <select value={categoryFilter} onChange={resetToFirstPage(setCategoryFilter)}>
+                    <option value="">All categories</option>
+                    {categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span className="sr-only">Filter by overdue</span>
+                  <select value={overdueFilter} onChange={resetToFirstPage(setOverdueFilter)}>
+                    <option value="">Overdue: any</option>
+                    <option value="true">Overdue only</option>
+                    <option value="false">Not overdue</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="sr-only">Search requests</span>
+                  <input
+                    type="search"
+                    value={search}
+                    placeholder="Search requests"
+                    onChange={resetToFirstPage(setSearch)}
+                    maxLength={100}
+                  />
+                </label>
+                <label>
+                  <span className="sr-only">Sort requests</span>
+                  <select value={ordering} onChange={resetToFirstPage(setOrdering)}>
+                    <option value="-created_at">Newest first</option>
+                    <option value="created_at">Oldest first</option>
+                    <option value="priority">Priority ascending</option>
+                    <option value="-priority">Priority descending</option>
+                    <option value="status">Status ascending</option>
+                    <option value="-status">Status descending</option>
+                  </select>
+                </label>
+              </>
+            )}
+            {(statusFilter || priorityFilter || categoryFilter || overdueFilter || search) && (
               <button
                 className="request-panel__reset"
                 type="button"
-                onClick={() => { setStatusFilter(""); setPriorityFilter(""); }}
+                onClick={() => {
+                  setStatusFilter("");
+                  setPriorityFilter("");
+                  setCategoryFilter("");
+                  setOverdueFilter("");
+                  setSearch("");
+                  setCurrentPage(1);
+                }}
               >
                 Clear filters
               </button>
@@ -194,20 +282,27 @@ export default function RequestDashboard({ isAdmin = false }) {
             <span>{error}</span>
             <button className="request-dashboard__secondary" type="button" onClick={loadRequests}>Try again</button>
           </div>
-        ) : requests.length === 0 ? (
+        ) : totalCount === 0 ? (
           <div className="request-state">
             <span className="request-state__icon" aria-hidden="true">▤</span>
-            <strong>{statusFilter || priorityFilter ? "No matching requests" : "No requests yet"}</strong>
+            <strong>{statusFilter || priorityFilter || categoryFilter || overdueFilter || search ? "No matching requests" : "No requests yet"}</strong>
             <span>
-              {statusFilter || priorityFilter
+              {statusFilter || priorityFilter || categoryFilter || overdueFilter || search
                 ? "Try changing or clearing the filters."
                 : "Create a request to get the help you need."}
             </span>
-            {statusFilter || priorityFilter ? (
+            {statusFilter || priorityFilter || categoryFilter || overdueFilter || search ? (
               <button
                 type="button"
                 className="request-dashboard__secondary"
-                onClick={() => { setStatusFilter(""); setPriorityFilter(""); }}
+                onClick={() => {
+                  setStatusFilter("");
+                  setPriorityFilter("");
+                  setCategoryFilter("");
+                  setOverdueFilter("");
+                  setSearch("");
+                  setCurrentPage(1);
+                }}
               >
                 Clear filters
               </button>
@@ -223,10 +318,13 @@ export default function RequestDashboard({ isAdmin = false }) {
               <thead>
                 <tr>
                   <th scope="col">Request</th>
+                  {isAdmin && <th scope="col">ID</th>}
+                  {isAdmin && <th scope="col">Employee</th>}
                   <th scope="col">Category</th>
                   <th scope="col">Priority</th>
                   <th scope="col">Status</th>
                   <th scope="col">Created</th>
+                  {isAdmin && <th scope="col">Overdue</th>}
                   {isAdmin && <th scope="col">Change status</th>}
                   <th scope="col">Actions</th>
                 </tr>
@@ -236,12 +334,14 @@ export default function RequestDashboard({ isAdmin = false }) {
                   <tr key={request.id}>
                     <td data-label="Request">
                       <Link className="request-table__title" to={requestPath(request.id)}>{request.title}</Link>
-                      {isAdmin && <small className="request-table__owner">by {request.created_by}</small>}
                     </td>
+                    {isAdmin && <td data-label="ID">#{request.id}</td>}
+                    {isAdmin && <td data-label="Employee">{request.employee}</td>}
                     <td data-label="Category">{request.category}</td>
                     <td data-label="Priority"><PriorityBadge priority={request.priority} /></td>
                     <td data-label="Status"><StatusBadge status={request.status} /></td>
                     <td data-label="Created" className="request-table__date">{formatDate(request.created_at)}</td>
+                    {isAdmin && <td data-label="Overdue">{request.is_overdue ? "Yes" : "No"}</td>}
                     {isAdmin && (
                       <td data-label="Change status">
                         <label className="sr-only" htmlFor={`status-${request.id}`}>Status for {request.title}</label>
@@ -269,10 +369,10 @@ export default function RequestDashboard({ isAdmin = false }) {
             </table>
           </div>
         )}
-        {!loading && !error && requests.length > 0 && (
+        {!loading && !error && totalCount > 0 && (
           <nav className="request-pagination" aria-label="Request list pagination">
             <p className="request-pagination__summary">
-              Showing <strong>{firstItem}–{lastItem}</strong> of <strong>{requests.length}</strong>
+              Showing <strong>{firstItem}–{lastItem}</strong> of <strong>{totalCount}</strong>
             </p>
             <div className="request-pagination__controls">
               <label className="request-pagination__page-size">

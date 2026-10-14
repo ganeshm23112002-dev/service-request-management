@@ -106,6 +106,17 @@
     cursor: pointer;
     font-size: v.$font-sm;
   }
+
+  input {
+    min-height: 2.5rem;
+    width: min(14rem, 100%);
+    padding: 0 v.$space-3;
+    border: 1px solid v.$color-border;
+    border-radius: v.$radius-sm;
+    background: #fff;
+    color: v.$color-text;
+    font-size: v.$font-sm;
+  }
 }
 
 .request-panel__reset {
